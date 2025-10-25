@@ -11,7 +11,8 @@ pub enum FormulaPart {
     Not,
     Implies,
     Variable(usize), // using usize as identifier, will use hashmap to go from string to ussize
-                     // The usize is the 2^n for a big int for use to bit mask
+    // The usize is the 2^n for a big int for use to bit mask
+    Constant(bool), // for clause elimination
 }
 
 #[derive(Debug)]
@@ -67,23 +68,109 @@ impl Formula {
                     let left = stack.pop().expect("Nothing to pop");
                     stack.push(!left || right);
                 }
+                FormulaPart::Constant(b) => stack.push(*b),
             }
         }
 
         assert_eq!(stack.len(), 1, "formula not fully reduced");
-        stack.pop().unwrap()
+        let result = stack.pop().unwrap();
+        println!(
+            "Tried: {:0width$b} and got: {}",
+            variables,
+            result,
+            width = self.names.len()
+        );
+        result
     }
 
     pub fn fully_solve(&self) -> Option<BigUint> {
         let one: BigUint = BigUint::from(1_u8);
+        // this is the total range
         let to = one << self.names.len();
         let zero = BigUint::from(0_u8);
-        num_iter::range(zero, to)
-            .into_iter()
-            .par_bridge()
-            .find_any(|x| {
-                return self.solve(&x);
-            })
+        // create a hint
+        let mut should_values: HashMap<usize, bool> = HashMap::with_capacity(self.names.len());
+        let mut stack: Vec<FormulaPart> = Vec::with_capacity(self.data.len() >> 2);
+        for part in self.data.iter() {
+            match part {
+                FormulaPart::Variable(var) => {
+                    stack.push(FormulaPart::Variable(*var));
+                }
+                FormulaPart::Not => {
+                    let change = stack.pop().expect("Nothing to pop");
+                    if let FormulaPart::Variable(x) = change {
+                        should_values.insert(x, false);
+                    }
+                    stack.push(FormulaPart::Not);
+                }
+                FormulaPart::And => {
+                    let right = stack.pop().expect("Nothing to pop");
+                    let left = stack.pop().expect("Nothing to pop");
+                    if let FormulaPart::Variable(x) = left {
+                        should_values.insert(x, true);
+                    }
+                    if let FormulaPart::Variable(x) = right {
+                        should_values.insert(x, true);
+                    }
+                    stack.push(FormulaPart::And);
+                }
+                FormulaPart::Or => {
+                    let right = stack.pop().expect("Nothing to pop");
+                    let left = stack.pop().expect("Nothing to pop");
+                    if let FormulaPart::Variable(x) = left {
+                        if let Some(value) = should_values.get(&x)
+                            && *value != false
+                        {
+                            should_values.insert(x, true);
+                        }
+                    }
+                    if let FormulaPart::Variable(x) = right {
+                        if let Some(value) = should_values.get(&x)
+                            && *value != false
+                        {
+                            should_values.insert(x, true);
+                        }
+                    }
+                    stack.push(FormulaPart::Or);
+                }
+                FormulaPart::Implies => {
+                    let right = stack.pop().expect("Nothing to pop");
+                    let left = stack.pop().expect("Nothing to pop");
+                    if let FormulaPart::Variable(x) = left {
+                        if let Some(value) = should_values.get(&x)
+                            && *value != true
+                        {
+                            should_values.insert(x, false);
+                        }
+                    }
+                    if let FormulaPart::Variable(x) = right {
+                        if let Some(value) = should_values.get(&x)
+                            && *value != false
+                        {
+                            should_values.insert(x, true);
+                        }
+                    }
+                    stack.push(FormulaPart::Or);
+                }
+                FormulaPart::Constant(b) => stack.push(FormulaPart::Constant(*b)),
+            }
+        }
+        let mut hint: BigUint = BigUint::ZERO;
+        for value in (0..self.names.len()).rev() {
+            hint = hint << 1;
+            if let Some(b) = should_values.get(&value) {
+                if *b {
+                    hint += BigUint::from(1_u8);
+                }
+            }
+        }
+
+        let hint_forward = num_iter::range(hint.clone(), to);
+        let hint_back = num_iter::range(zero, hint).rev();
+
+        hint_forward.chain(hint_back).par_bridge().find_any(|x| {
+            return self.solve(&x);
+        })
     }
 }
 
