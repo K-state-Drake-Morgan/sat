@@ -41,8 +41,11 @@ enum Interface {
 fn main_cli(contents: String) {
     let s = Sentance::from(contents);
     let f = Formula::try_from(s).unwrap();
-    dbg!(&f);
-    f.fully_solve();
+    if let Some(result) = f.fully_solve() {
+        println!("{:0width$b} is True", result, width = f.operands());
+    } else {
+        println!("Continuety");
+    }
 }
 
 fn main() -> color_eyre::Result<()> {

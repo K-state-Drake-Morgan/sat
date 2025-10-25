@@ -40,6 +40,10 @@ pub struct Formula {
 }
 
 impl Formula {
+    pub fn operands(&self) -> usize {
+        self.names.len()
+    }
+
     /// panics if the formula is nonsensical
     pub fn solve(&self, variables: &BigUint) -> bool {
         let mut stack: Vec<bool> = Vec::with_capacity(self.data.len() >> 2);
