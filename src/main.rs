@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 use log::{info, warn};
 use num_bigint::BigUint;
 use num_traits::identities::Zero;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,6 +32,7 @@ impl TryFrom<HumanOperator> for FormulaPart {
     }
 }
 
+#[derive(Debug)]
 struct Formula {
     /// stored in postfix
     data: Vec<FormulaPart>,
@@ -64,13 +66,30 @@ impl Formula {
                 FormulaPart::Implies => {
                     let right = stack.pop().expect("Nothing to pop");
                     let left = stack.pop().expect("Nothing to pop");
-                    stack.push(!right || left);
+                    stack.push(!left || right);
                 }
             }
         }
 
         assert_eq!(stack.len(), 1, "formula not fully reduced");
         stack.pop().unwrap()
+    }
+
+    fn fully_solve(&self) {
+        let one: BigUint = BigUint::from(1_u8);
+        let to = one << self.names.len();
+        let zero = BigUint::from(0_u8);
+        num_iter::range(zero, to)
+            .into_iter()
+            .par_bridge()
+            .for_each(|x| {
+                println!(
+                    "{:0width$b} | {}",
+                    x,
+                    self.solve(&x),
+                    width = self.names.len()
+                );
+            });
     }
 }
 
@@ -218,6 +237,86 @@ struct Sentance {
     data: Vec<HumanOperator>,
 }
 
+impl From<String> for Sentance {
+    fn from(value: String) -> Self {
+        let mut data = Vec::new();
+        let mut buffer = String::new();
+
+        for ch in value.chars() {
+            match ch {
+                '(' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::OpeningParenthesis);
+                }
+                ')' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::ClosingParenthesis);
+                }
+                '[' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::OpeningBracket);
+                }
+                ']' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::ClosingBracket);
+                }
+                '{' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::OpeningCurly);
+                }
+                '}' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::ClosingCurly);
+                }
+
+                '|' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::Or);
+                }
+                '&' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::And);
+                }
+                '!' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::Not);
+                }
+                '>' => {
+                    push_buffer(&mut buffer, &mut data);
+                    data.push(HumanOperator::Implies);
+                }
+
+                ' ' => {
+                    push_buffer(&mut buffer, &mut data);
+                }
+
+                _ => buffer.push(ch),
+            }
+        }
+
+        push_buffer(&mut buffer, &mut data);
+
+        Sentance { data }
+    }
+}
+
+fn push_buffer(buffer: &mut String, data: &mut Vec<HumanOperator>) {
+    if buffer.is_empty() {
+        return;
+    }
+
+    let token = buffer.trim().to_lowercase();
+    let op = match token.as_str() {
+        "and" => HumanOperator::And,
+        "or" => HumanOperator::Or,
+        "not" => HumanOperator::Not,
+        "implies" => HumanOperator::Implies,
+        _ => HumanOperator::Variable(token),
+    };
+    data.push(op);
+    buffer.clear();
+}
+
 #[derive(Parser, Debug)]
 #[command(
     version,
@@ -250,7 +349,12 @@ enum Interface {
     CLI,
 }
 
-fn main_cli(contents: String) {}
+fn main_cli(contents: String) {
+    let s = Sentance::from(contents);
+    let f = Formula::try_from(s).unwrap();
+    dbg!(&f);
+    f.fully_solve();
+}
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
