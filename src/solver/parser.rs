@@ -1,18 +1,35 @@
+//! Everything to convert a string to a still slightly readable boolean problem
+
+/// The possible human operands for a sat problem
 pub enum HumanOperator {
+    /// boolean and
     And,
+    /// boolean or
     Or,
+    /// boolean not
     Not,
+    /// boolean implies
     Implies, // becomes not a or b
+    /// boolean varible
     Variable(String),
+    /// boolean true or false
+    Constant(bool),
+    /// (
     OpeningParenthesis,
+    /// )
     ClosingParenthesis,
+    /// [
     OpeningBracket,
+    /// ]
     ClosingBracket,
+    /// {
     OpeningCurly,
+    /// }
     ClosingCurly,
 }
 
 impl HumanOperator {
+    /// how much the operand matters
     pub fn precedence(&self) -> usize {
         match self {
             HumanOperator::Variable(_) => 0,
@@ -24,12 +41,15 @@ impl HumanOperator {
         }
     }
 
+    /// effects precedence
     pub fn is_right_associative(&self) -> bool {
         matches!(self, HumanOperator::Implies | HumanOperator::Not)
     }
 }
 
+/// A human boolean problem
 pub struct Sentance {
+    /// The data
     pub data: Vec<HumanOperator>,
 }
 

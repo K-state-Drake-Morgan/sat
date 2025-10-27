@@ -1,3 +1,5 @@
+//! Command to solve a sat problem
+
 use clap::{Parser, ValueEnum};
 use log::{info, warn};
 use std::path::PathBuf;
@@ -6,6 +8,7 @@ pub mod solver;
 use solver::formula::Formula;
 use solver::parser::Sentance;
 
+/// Configuration for running this command
 #[derive(Parser, Debug)]
 #[command(
     version,
@@ -26,6 +29,7 @@ struct Arguments {
     problem: Option<String>,
 }
 
+/// The user interface to use
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq, Eq)]
 #[clap(rename_all = "lower")]
 enum Interface {
@@ -38,6 +42,7 @@ enum Interface {
     CLI,
 }
 
+/// The user only cares about the output, so only work on that
 fn main_cli(contents: String) {
     let s = Sentance::from(contents);
     let f = Formula::try_from(s).unwrap();

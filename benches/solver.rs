@@ -1,3 +1,6 @@
+#![allow(missing_docs)]
+
+//! benching
 use criterion::{Criterion, criterion_group, criterion_main};
 
 use sat::{
@@ -5,7 +8,8 @@ use sat::{
     solver::{formula::Formula, parser::Sentance},
 };
 
-fn bench_full_solver(c: &mut Criterion) {
+/// Bench fully solving a problem that allways has a true ness
+pub fn bench_full_solver(c: &mut Criterion) {
     let data: String = include_str!("../sat_formulas/sat_2x2_expression.txt").to_string();
     let human_sentace = Sentance::from(data);
     let parser = Formula::try_from(human_sentace).unwrap();

@@ -1,20 +1,30 @@
+//! The Parts needed to solve a boolean sat problem
+
 use super::parser::{HumanOperator, Sentance};
 use num_bigint::BigUint;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::collections::HashMap;
 
+/// Part of a boolean formula
 #[derive(Debug, PartialEq, Eq)]
 pub enum FormulaPart {
+    /// Boolean And
     And,
+    /// Boolean Or
     Or,
+    /// Boolean Not
     Not,
+    /// Boolean Implies
     Implies,
+    /// Boolean Varible like x or y
     Variable(usize), // using usize as identifier, will use hashmap to go from string to ussize
     // The usize is the 2^n for a big int for use to bit mask
+    /// Boolean Constant: true or false
     Constant(bool), // for clause elimination
 }
 
+/// An error for a going from HumanOperator to FormulaPart
 #[derive(Debug)]
 pub struct UnReadableError;
 
@@ -32,14 +42,17 @@ impl TryFrom<HumanOperator> for FormulaPart {
     }
 }
 
+/// A Formula with names to varible position
 #[derive(Debug)]
 pub struct Formula {
-    /// stored in postfix
+    /// data stored in postfix
     data: Vec<FormulaPart>,
+    /// named variables
     names: HashMap<String, usize>,
 }
 
 impl Formula {
+    /// The Number of operands in the data (how many unique varibles)
     pub fn operands(&self) -> usize {
         self.names.len()
     }
@@ -87,6 +100,7 @@ impl Formula {
         result
     }
 
+    /// Solve the satisabillity problem
     pub fn fully_solve(&self) -> Option<BigUint> {
         let one: BigUint = BigUint::from(1_u8);
         // this is the total range
@@ -176,8 +190,30 @@ impl Formula {
             return self.solve(&x);
         })
     }
+
+    /// Iterates backwards thru the formula and attempts to find a solution via guessing what
+    /// the childrens values should be
+    pub fn find_solve(&self) -> Option<BigUint> {
+        // setup values only used here
+        #[derive(Clone, Copy)]
+        enum Needs {
+            True,
+            False,
+            Either,
+            Is(bool),
+        }
+
+        // create a vector that stores the varible values
+        let values: Vec<Needs> = vec![Needs::Either; self.operands()];
+
+        todo!()
+    }
+
+    /// Makes it easier to work on self by removings implies and doing negation
+    pub fn simplify(&mut self) {}
 }
 
+/// Error when failure to convert from a sentance to a formula
 #[derive(Debug)]
 pub enum FormulaFromSentanceError {}
 
@@ -200,6 +236,10 @@ impl TryFrom<Sentance> for Formula {
                         names.insert(name.clone(), names.len());
                         output.push(FormulaPart::Variable(*names.get(&name).unwrap()));
                     }
+                }
+
+                HumanOperator::Constant(value) => {
+                    output.push(FormulaPart::Constant(value));
                 }
 
                 HumanOperator::Not
