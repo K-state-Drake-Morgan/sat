@@ -24,6 +24,13 @@ struct Arguments {
     #[arg(short, long, group = "sat_problem")]
     file: Option<PathBuf>,
 
+    /// Where to send the output, on non just use the terminal out
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    #[command(flatten)]
+    verbosity: clap_verbosity_flag::Verbosity,
+
     /// A Satisfiability Problem
     #[arg(group = "sat_problem")]
     problem: Option<String>,
