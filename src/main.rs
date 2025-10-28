@@ -63,9 +63,11 @@ fn main_cli(contents: String) {
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
-    env_logger::init();
-
     let args = Arguments::parse();
+
+    env_logger::Builder::new()
+        .filter_level(args.verbosity.into())
+        .init();
 
     match args.interface {
         Interface::CLI => {
