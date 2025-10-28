@@ -1,6 +1,7 @@
 //! The Parts needed to solve a boolean sat problem
 
 use super::parser::{HumanOperator, Sentance};
+use log::trace;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
@@ -107,7 +108,7 @@ impl Formula {
 
         assert_eq!(stack.len(), 1, "formula not fully reduced");
         let result = stack.pop().unwrap();
-        println!(
+        trace!(
             "Tried: {:0width$b} and got: {}",
             variables,
             result,
