@@ -24,6 +24,22 @@ pub enum FormulaPart {
     Constant(bool), // for clause elimination
 }
 
+/// Part of a boolean formula but with only non smaller parts
+#[derive(Debug, PartialEq, Eq)]
+pub enum AtomicFormulaPart {
+    /// Boolean And
+    And,
+    /// Boolean Or
+    Or,
+    /// Boolean Not
+    Not,
+    /// Boolean Varible like x or y
+    Variable(usize), // using usize as identifier, will use hashmap to go from string to ussize
+    // The usize is the 2^n for a big int for use to bit mask
+    /// Boolean Constant: true or false
+    Constant(bool), // for clause elimination
+}
+
 /// An error for a going from HumanOperator to FormulaPart
 #[derive(Debug)]
 pub struct UnReadableError;
@@ -133,21 +149,38 @@ impl Formula {
                     stack.push(FormulaPart::And);
                 }
                 FormulaPart::Or => {
-                    let right = stack.pop().expect("Nothing to pop");
-                    let left = stack.pop().expect("Nothing to pop");
-                    if let FormulaPart::Variable(x) = left {
-                        if let Some(value) = should_values.get(&x)
-                            && *value != false
-                        {
-                            should_values.insert(x, true);
-                        }
+                    let right;
+                    if let Some(FormulaPart::Variable(r)) = stack.pop() {
+                        right = Some(r);
+                    } else {
+                        right = None;
                     }
-                    if let FormulaPart::Variable(x) = right {
-                        if let Some(value) = should_values.get(&x)
-                            && *value != false
-                        {
-                            should_values.insert(x, true);
+                    let left;
+                    if let Some(FormulaPart::Variable(l)) = stack.pop() {
+                        left = Some(l);
+                    } else {
+                        left = None;
+                    }
+                    match (left, right) {
+                        (Some(l), Some(r)) => {
+                            if let None = should_values.get(&l) {
+                                should_values.insert(l, true);
+                            }
+                            if let None = should_values.get(&r) {
+                                should_values.insert(r, true);
+                            }
                         }
+                        (Some(l), None) => {
+                            if let None = should_values.get(&l) {
+                                should_values.insert(l, true);
+                            }
+                        }
+                        (None, Some(r)) => {
+                            if let None = should_values.get(&r) {
+                                should_values.insert(r, true);
+                            }
+                        }
+                        _ => {}
                     }
                     stack.push(FormulaPart::Or);
                 }
@@ -210,7 +243,28 @@ impl Formula {
     }
 
     /// Makes it easier to work on self by removings implies and doing negation
-    pub fn simplify(&mut self) {}
+    pub fn simplify(&mut self) {
+        let mut stack: Vec<FormulaPart> = Vec::with_capacity(self.data.len());
+        for element in self.data.iter() {
+            match element {
+                FormulaPart::Variable(index) => stack.push(FormulaPart::Variable(*index)),
+                FormulaPart::Constant(value) => stack.push(FormulaPart::Constant(*value)),
+                FormulaPart::And => stack.push(FormulaPart::And),
+                FormulaPart::Or => stack.push(FormulaPart::Or),
+                FormulaPart::Implies => {
+                    // insert not to the left (harder than it looks)
+                    stack.push(FormulaPart::Not);
+                    stack.push(FormulaPart::Or);
+                }
+                FormulaPart::Not => {
+                    if let None = stack.pop_if(|last| *last == FormulaPart::Not) {
+                        stack.push(FormulaPart::Not);
+                    }
+                }
+            }
+        }
+        self.data = stack;
+    }
 }
 
 /// Error when failure to convert from a sentance to a formula
@@ -325,5 +379,69 @@ mod formula_tests {
                     FormulaPart::Or
                 ]
         );
+    }
+
+    #[test]
+    fn simplify_removes_extra_nots() {
+        let sentance = Sentance {
+            data: vec![
+                HumanOperator::Not,
+                HumanOperator::Not,
+                HumanOperator::Variable("A".to_string()),
+            ],
+        };
+
+        let mut formula = Formula::try_from(sentance).unwrap();
+
+        formula.simplify();
+        let should_be = vec![FormulaPart::Variable(0)];
+        println!("got: {:?}, should have: {:?}", formula.data, should_be);
+        assert!(formula.data == should_be);
+    }
+
+    #[test]
+    fn simplify_removes_implies() {
+        let sentance = Sentance {
+            data: vec![
+                HumanOperator::Variable("A".to_string()),
+                HumanOperator::Implies,
+                HumanOperator::Variable("B".to_string()),
+            ],
+        };
+
+        let mut formula = Formula::try_from(sentance).unwrap();
+
+        formula.simplify();
+        let should_be = vec![
+            FormulaPart::Variable(0),
+            FormulaPart::Not,
+            FormulaPart::Variable(1),
+            FormulaPart::Or,
+        ];
+        println!("got: {:?}, should have: {:?}", formula.data, should_be);
+        assert!(formula.data == should_be);
+    }
+
+    #[test]
+    fn simplify_dosn_t_change_output() {
+        let sentance = Sentance {
+            data: vec![
+                HumanOperator::Variable("A".to_string()),
+                HumanOperator::Implies,
+                HumanOperator::Variable("B".to_string()),
+            ],
+        };
+
+        let mut formula = Formula::try_from(sentance).unwrap();
+
+        formula.simplify();
+        let should_be = vec![
+            FormulaPart::Variable(0),
+            FormulaPart::Variable(1),
+            FormulaPart::Not,
+            FormulaPart::Or,
+        ];
+        println!("got: {:?}, should have: {:?}", formula.data, should_be);
+        assert!(formula.data == should_be);
     }
 }
