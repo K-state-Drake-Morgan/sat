@@ -1,11 +1,12 @@
 //! The Parts needed to solve a boolean sat problem
 
 use super::parser::{HumanOperator, Sentance};
-use log::trace;
+use log::{debug, trace};
 use num_bigint::BigUint;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Part of a boolean formula
 #[derive(Debug, PartialEq, Eq)]
@@ -63,7 +64,7 @@ impl TryFrom<HumanOperator> for FormulaPart {
 #[derive(Debug)]
 pub struct Formula {
     /// data stored in postfix
-    data: Vec<FormulaPart>,
+    data: Arc<Vec<FormulaPart>>,
     /// named variables
     names: HashMap<String, usize>,
 }
@@ -119,6 +120,7 @@ impl Formula {
 
     /// Solve the satisabillity problem
     pub fn fully_solve(&self) -> Option<BigUint> {
+        debug!("Solving: {:?}", self.data);
         let one: BigUint = BigUint::from(1_u8);
         // this is the total range
         let to = one << self.names.len();
@@ -264,7 +266,7 @@ impl Formula {
                 }
             }
         }
-        self.data = stack;
+        self.data = Arc::new(stack);
     }
 }
 
@@ -341,7 +343,7 @@ impl TryFrom<Sentance> for Formula {
         }
 
         Ok(Formula {
-            data: output,
+            data: Arc::new(output),
             names,
         })
     }
@@ -371,14 +373,14 @@ mod formula_tests {
 
         assert!(
             formula.data
-                == vec![
+                == Arc::new(vec![
                     FormulaPart::Variable(0),
                     FormulaPart::Variable(1),
                     FormulaPart::Not,
                     FormulaPart::And,
                     FormulaPart::Variable(2),
                     FormulaPart::Or
-                ]
+                ])
         );
     }
 
@@ -395,7 +397,7 @@ mod formula_tests {
         let mut formula = Formula::try_from(sentance).unwrap();
 
         formula.simplify();
-        let should_be = vec![FormulaPart::Variable(0)];
+        let should_be = Arc::new(vec![FormulaPart::Variable(0)]);
         println!("got: {:?}, should have: {:?}", formula.data, should_be);
         assert!(formula.data == should_be);
     }
@@ -413,12 +415,12 @@ mod formula_tests {
         let mut formula = Formula::try_from(sentance).unwrap();
 
         formula.simplify();
-        let should_be = vec![
+        let should_be = Arc::new(vec![
             FormulaPart::Variable(0),
             FormulaPart::Not,
             FormulaPart::Variable(1),
             FormulaPart::Or,
-        ];
+        ]);
         println!("got: {:?}, should have: {:?}", formula.data, should_be);
         assert!(formula.data == should_be);
     }
@@ -436,12 +438,12 @@ mod formula_tests {
         let mut formula = Formula::try_from(sentance).unwrap();
 
         formula.simplify();
-        let should_be = vec![
+        let should_be = Arc::new(vec![
             FormulaPart::Variable(0),
             FormulaPart::Variable(1),
             FormulaPart::Not,
             FormulaPart::Or,
-        ];
+        ]);
         println!("got: {:?}, should have: {:?}", formula.data, should_be);
         assert!(formula.data == should_be);
     }

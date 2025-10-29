@@ -1,7 +1,9 @@
 //! Command to solve a sat problem
 
 use clap::{Parser, ValueEnum};
-use log::{info, warn};
+use log::debug;
+use log::{info, trace, warn};
+use std::fs::File;
 use std::path::PathBuf;
 
 pub mod solver;
@@ -50,9 +52,22 @@ enum Interface {
 }
 
 /// The user only cares about the output, so only work on that
-fn main_cli(contents: String) {
-    let s = Sentance::from(contents);
+fn main_cli(args: Arguments) {
+    debug!("can Debug!");
+    let s;
+    match args.file {
+        Some(path) => {
+            trace!("Getting Sentance from file");
+            s = Sentance::from(File::open(path).expect("Unable to open file"));
+        }
+        None => {
+            trace!("Getting Sentance From inputed string");
+            s = Sentance::from(args.problem.expect("Failed to input a problem"));
+        }
+    }
+    trace!("Creating formula");
     let f = Formula::try_from(s).unwrap();
+    trace!("Solving");
     if let Some(result) = f.fully_solve() {
         println!("{:0width$b} is True", result, width = f.operands());
     } else {
@@ -107,7 +122,7 @@ fn main() -> color_eyre::Result<()> {
                 }
             };
 
-            main_cli(input_contents);
+            main_cli(args);
         }
         Interface::TUI => {} // ratatui
         Interface::GUI => {} // egui works for this
