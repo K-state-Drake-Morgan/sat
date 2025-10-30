@@ -1,14 +1,11 @@
 //! Command to solve a sat problem
 
 use clap::{Parser, ValueEnum};
-use log::debug;
 use log::{info, trace, warn};
-use std::fs::File;
 use std::path::PathBuf;
 
 pub mod solver;
 use solver::formula::Formula;
-use solver::parser::Sentance;
 
 /// Configuration for running this command
 #[derive(Parser, Debug)]
@@ -52,21 +49,9 @@ enum Interface {
 }
 
 /// The user only cares about the output, so only work on that
-fn main_cli(args: Arguments) {
-    debug!("can Debug!");
-    let s;
-    match args.file {
-        Some(path) => {
-            trace!("Getting Sentance from file");
-            s = Sentance::from(File::open(path).expect("Unable to open file"));
-        }
-        None => {
-            trace!("Getting Sentance From inputed string");
-            s = Sentance::from(args.problem.expect("Failed to input a problem"));
-        }
-    }
+fn main_cli(contents: String) {
     trace!("Creating formula");
-    let f = Formula::try_from(s).unwrap();
+    let f = Formula::try_from(contents).unwrap();
     trace!("Solving");
     if let Some(result) = f.fully_solve() {
         println!("{:0width$b} is True", result, width = f.operands());
@@ -122,7 +107,7 @@ fn main() -> color_eyre::Result<()> {
                 }
             };
 
-            main_cli(args);
+            main_cli(input_contents);
         }
         Interface::TUI => {} // ratatui
         Interface::GUI => {} // egui works for this
