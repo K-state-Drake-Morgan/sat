@@ -1,7 +1,7 @@
 //! Command to solve a sat problem
 
 use clap::{Parser, ValueEnum};
-use log::{info, trace, warn};
+use log::{info, warn};
 use std::path::PathBuf;
 
 pub mod solver;
@@ -50,9 +50,9 @@ enum Interface {
 
 /// The user only cares about the output, so only work on that
 fn main_cli(contents: String) {
-    trace!("Creating formula");
+    info!("Creating formula");
     let f = Formula::try_from(contents).unwrap();
-    trace!("Solving");
+    info!("Solving");
     if let Some(result) = f.fully_solve() {
         println!("{:0width$b} is True", result, width = f.operands());
     } else {
@@ -75,7 +75,7 @@ fn main() -> color_eyre::Result<()> {
                 // I don't know when this became unneeded du to error: the argument '--file <FILE>' cannot be used with '[PROBLEM]' but I'll keep it here incase things change
                 (Some(file_path), Some(problem_str)) => {
                     if file_path.exists() && file_path.is_file() {
-                        info!(
+                        warn!(
                             "Both file and problem provided; using file at {:?}",
                             file_path
                         );
