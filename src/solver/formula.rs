@@ -36,6 +36,24 @@ enum FormulaOperator {
     OpenParenthisies { line: usize, column: usize },
 }
 
+impl FormulaOperator {
+    /// ordering of elements
+    pub fn precedence(&self) -> usize {
+        match self {
+            FormulaOperator::OpenParenthisies { line: _, column: _ } => 1,
+            FormulaOperator::Not => 2,
+            FormulaOperator::And => 3,
+            FormulaOperator::Or => 4,
+            FormulaOperator::Implies => 5,
+        }
+    }
+
+    /// is the operand is right assosiate
+    pub fn right_assosiate(&self) -> bool {
+        matches!(self, FormulaOperator::Implies)
+    }
+}
+
 /// Part of a boolean formula but with only non smaller parts
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub enum FormulaPart {
@@ -251,8 +269,11 @@ impl TryFrom<String> for Formula {
                     '(' => {
                         let buffer_is_empty = buffer.is_empty();
                         if !buffer_is_empty {
+                            trace!("Pushing Varible: {}", buffer);
                             if let Some(index) = names.get(&buffer) {
                                 data.push(AtomicFormulaPart::Variable(*index));
+
+                                buffer.clear();
                             } else {
                                 let index = names.len();
                                 names.insert(buffer.clone(), index);
@@ -268,8 +289,11 @@ impl TryFrom<String> for Formula {
                     '&' => {
                         let buffer_is_empty = buffer.is_empty();
                         if !buffer_is_empty {
+                            trace!("Pushing Varible: {}", buffer);
                             if let Some(index) = names.get(&buffer) {
                                 data.push(AtomicFormulaPart::Variable(*index));
+
+                                buffer.clear();
                             } else {
                                 let index = names.len();
                                 names.insert(buffer.clone(), index);
@@ -282,8 +306,11 @@ impl TryFrom<String> for Formula {
                     '|' => {
                         let buffer_is_empty = buffer.is_empty();
                         if !buffer_is_empty {
+                            trace!("Pushing Varible: {}", buffer);
                             if let Some(index) = names.get(&buffer) {
                                 data.push(AtomicFormulaPart::Variable(*index));
+
+                                buffer.clear();
                             } else {
                                 let index = names.len();
                                 names.insert(buffer.clone(), index);
@@ -296,8 +323,11 @@ impl TryFrom<String> for Formula {
                     '!' => {
                         let buffer_is_empty = buffer.is_empty();
                         if !buffer_is_empty {
+                            trace!("Pushing Varible: {}", buffer);
                             if let Some(index) = names.get(&buffer) {
                                 data.push(AtomicFormulaPart::Variable(*index));
+
+                                buffer.clear();
                             } else {
                                 let index = names.len();
                                 names.insert(buffer.clone(), index);
@@ -310,8 +340,10 @@ impl TryFrom<String> for Formula {
                     '>' => {
                         let buffer_is_empty = buffer.is_empty();
                         if !buffer_is_empty {
+                            trace!("Pushing Varible: {}", buffer);
                             if let Some(index) = names.get(&buffer) {
                                 data.push(AtomicFormulaPart::Variable(*index));
+                                buffer.clear();
                             } else {
                                 let index = names.len();
                                 names.insert(buffer.clone(), index);
@@ -324,8 +356,11 @@ impl TryFrom<String> for Formula {
                     ')' => {
                         let buffer_is_empty = buffer.is_empty();
                         if !buffer_is_empty {
+                            trace!("Pushing Varible: {}", buffer);
                             if let Some(index) = names.get(&buffer) {
                                 data.push(AtomicFormulaPart::Variable(*index));
+
+                                buffer.clear();
                             } else {
                                 let index = names.len();
                                 names.insert(buffer.clone(), index);
@@ -397,8 +432,11 @@ impl TryFrom<String> for Formula {
             }
         }
         if !buffer.is_empty() {
+            trace!("Pushing Varible: {}", buffer);
             if let Some(index) = names.get(&buffer) {
                 data.push(AtomicFormulaPart::Variable(*index));
+
+                buffer.clear();
             } else {
                 let index = names.len();
                 names.insert(buffer.clone(), index);
