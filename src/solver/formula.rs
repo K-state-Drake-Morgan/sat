@@ -8,7 +8,7 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
-use std::sync::Arc;
+// use std::sync::Arc; so far I have found that for large formulas the
 
 /// Part of a boolean formula but with only non smaller parts
 #[derive(Debug, PartialEq, Eq)]
@@ -27,6 +27,7 @@ pub enum AtomicFormulaPart {
     Constant(bool), // for clause elimination
 }
 
+#[derive(Clone, Copy)]
 #[repr(u8)]
 enum FormulaOperator {
     And,
@@ -92,6 +93,11 @@ impl Formula {
                 AtomicFormulaPart::Variable(var) => {
                     let bit = (variables >> var) & BigUint::from(1u8);
                     stack.push(!bit.is_zero());
+                    trace!(
+                        "{} is {}",
+                        self.names.get(*var).unwrap(),
+                        stack.last().unwrap()
+                    );
                 }
                 AtomicFormulaPart::Not => {
                     let change = !stack.pop().expect("Nothing to pop");
@@ -263,8 +269,15 @@ impl TryFrom<String> for Formula {
         let mut names: HashMap<String, usize> = HashMap::new(); // will convert to a Vec later
         let mut buffer: String = String::new();
         let mut stack: Vec<FormulaOperator> = Vec::with_capacity(value.len() >> 1);
+        let mut previous: Option<&FormulaOperator> = None;
         for (line_number, line) in value.lines().enumerate() {
             for (column, character) in line.chars().enumerate() {
+                trace!("Testing: {}", character);
+                trace!("Buffer: {}", buffer);
+                if character.is_whitespace() {
+                    trace!("Skipping");
+                    continue;
+                }
                 match character {
                     '(' => {
                         // Push any pending variable in buffer first
@@ -279,6 +292,7 @@ impl TryFrom<String> for Formula {
                             line: line_number,
                             column,
                         });
+                        previous = stack.last();
                     }
 
                     ')' => {
@@ -299,32 +313,33 @@ impl TryFrom<String> for Formula {
                                 FormulaOperator::Or => data.push(AtomicFormulaPart::Or),
                                 FormulaOperator::Not => data.push(AtomicFormulaPart::Not),
                                 FormulaOperator::Implies => {
-                                    let right = data.pop().ok_or(InvalidFormula {
-                                        line: line_number,
-                                        column,
-                                        error: InvalidFormulaPart::InvalidOperand(
-                                            FormulaPart::Variable,
-                                        ),
-                                    })?;
-                                    let left = data.pop().ok_or(InvalidFormula {
-                                        line: line_number,
-                                        column,
-                                        error: InvalidFormulaPart::InvalidOperand(
-                                            FormulaPart::Variable,
-                                        ),
-                                    })?;
-
-                                    // Replace (left > right) with (!left | right)
-                                    data.push(left);
-                                    data.push(AtomicFormulaPart::Not);
-                                    data.push(right);
                                     data.push(AtomicFormulaPart::Or);
                                 }
                             }
                         }
+                        previous = None;
                     }
 
                     '&' | '|' | '!' | '>' => {
+                        if character != '!'
+                            && let Some(prev) = previous
+                        {
+                            match prev {
+                                FormulaOperator::And
+                                | FormulaOperator::Or
+                                | FormulaOperator::Implies
+                                    if buffer.is_empty() =>
+                                {
+                                    return Err(InvalidFormula {
+                                        line: line_number,
+                                        column,
+                                        error: InvalidFormulaPart::InvalidPostFix,
+                                    });
+                                }
+                                _ => {}
+                            }
+                        }
+
                         if !buffer.is_empty() {
                             trace!("Pushing Variable: {}", buffer);
                             let l = names.len();
@@ -337,53 +352,57 @@ impl TryFrom<String> for Formula {
                             '&' => FormulaOperator::And,
                             '|' => FormulaOperator::Or,
                             '!' => FormulaOperator::Not,
-                            '>' => FormulaOperator::Implies,
+                            '>' => {
+                                if let Some(element) = stack.last()
+                                    && element.right_assosiate()
+                                {
+                                    match stack.pop().unwrap() {
+                                        FormulaOperator::And => unreachable!(),
+                                        FormulaOperator::Or => unreachable!(),
+                                        FormulaOperator::Not => data.push(AtomicFormulaPart::Not),
+                                        FormulaOperator::Implies => {
+                                            data.push(AtomicFormulaPart::Or);
+                                        }
+                                        FormulaOperator::OpenParenthisies { .. } => unreachable!(),
+                                    }
+                                }
+                                data.push(AtomicFormulaPart::Not);
+                                FormulaOperator::Implies
+                            }
                             _ => unreachable!(),
                         };
 
                         // Precedence-aware operator popping (Shunting-Yard)
+
                         while let Some(top) = stack.last() {
                             let top_prec = top.precedence();
                             let curr_prec = current.precedence();
-                            if (top_prec < curr_prec)
-                                || (current.right_assosiate() && top_prec == curr_prec)
-                            {
+
+                            // correct associativity handling:
+                            let should_pop = if current.right_assosiate() {
+                                curr_prec < top_prec
+                            } else {
+                                curr_prec <= top_prec
+                            };
+
+                            if !should_pop {
                                 break;
                             }
+
                             match stack.pop().unwrap() {
                                 FormulaOperator::And => data.push(AtomicFormulaPart::And),
                                 FormulaOperator::Or => data.push(AtomicFormulaPart::Or),
                                 FormulaOperator::Not => data.push(AtomicFormulaPart::Not),
-
                                 FormulaOperator::Implies => {
-                                    // Pop right and left operands and replace with (!left) | right
-                                    let right = data.pop().ok_or(InvalidFormula {
-                                        line: line_number,
-                                        column,
-                                        error: InvalidFormulaPart::InvalidOperand(
-                                            FormulaPart::Variable,
-                                        ),
-                                    })?;
-                                    let left = data.pop().ok_or(InvalidFormula {
-                                        line: line_number,
-                                        column,
-                                        error: InvalidFormulaPart::InvalidOperand(
-                                            FormulaPart::Variable,
-                                        ),
-                                    })?;
-
-                                    // Push transformed postfix: left NOT OR right → !left | right
-                                    data.push(left);
-                                    data.push(AtomicFormulaPart::Not);
-                                    data.push(right);
                                     data.push(AtomicFormulaPart::Or);
                                 }
-
                                 FormulaOperator::OpenParenthisies { .. } => break,
                             }
                         }
 
                         stack.push(current);
+
+                        previous = Some(stack.last().unwrap());
                     }
 
                     _ => buffer.push(character),
@@ -403,51 +422,36 @@ impl TryFrom<String> for Formula {
                 buffer.clear();
             }
         }
-        loop {
-            let operator = stack.pop();
-            match operator {
-                None => {
-                    break;
+        trace!("Backtracing!");
+        while let Some(op) = stack.pop() {
+            match op {
+                FormulaOperator::OpenParenthisies { line, column } => {
+                    // Any unclosed '(' is an error
+                    return Err(InvalidFormula {
+                        line,
+                        column,
+                        error: InvalidFormulaPart::UnclosedParenthisies,
+                    });
                 }
-                Some(op) => match op {
-                    FormulaOperator::OpenParenthisies { line, column } => {
-                        return Err(InvalidFormula {
-                            line,
-                            column,
-                            error: InvalidFormulaPart::UnclosedParenthisies,
-                        });
-                    }
-                    FormulaOperator::And => {
-                        data.push(AtomicFormulaPart::And);
-                    }
-                    FormulaOperator::Not => {
-                        data.push(AtomicFormulaPart::Not);
-                    }
-                    FormulaOperator::Or => {
-                        data.push(AtomicFormulaPart::Or);
-                    }
-                    FormulaOperator::Implies => {
-                        // Pop right and left operands and replace with (!left) | right
-                        let right = data.pop().ok_or(InvalidFormula {
-                            line: 0,
-                            column: 0,
-                            error: InvalidFormulaPart::InvalidOperand(FormulaPart::Variable),
-                        })?;
-                        let left = data.pop().ok_or(InvalidFormula {
-                            line: 0,
-                            column: 0,
-                            error: InvalidFormulaPart::InvalidOperand(FormulaPart::Variable),
-                        })?;
 
-                        // Push transformed postfix: left NOT OR right → !left | right
-                        data.push(left);
-                        data.push(AtomicFormulaPart::Not);
-                        data.push(right);
-                        data.push(AtomicFormulaPart::Or);
-                    }
-                },
+                FormulaOperator::And => {
+                    data.push(AtomicFormulaPart::And);
+                }
+
+                FormulaOperator::Or => {
+                    data.push(AtomicFormulaPart::Or);
+                }
+
+                FormulaOperator::Not => {
+                    data.push(AtomicFormulaPart::Not);
+                }
+
+                FormulaOperator::Implies => {
+                    data.push(AtomicFormulaPart::Or);
+                }
             }
         }
+
         let mut out_names: Vec<String> = vec!["".to_string(); names.len()];
         for key in names.keys() {
             out_names[*names.get(key).unwrap()] = key.clone();
@@ -576,10 +580,10 @@ mod formula_tests {
         let formula = Formula::try_from("a>b>c".to_string()).unwrap();
 
         let vals = [
-            ([false, false, false], true),
+            ([false, false, false], false),
             ([true, false, false], true),
             ([true, false, true], true),
-            ([true, true, false], true),
+            ([true, true, false], false),
         ];
 
         for (input, expected) in vals {
@@ -594,6 +598,7 @@ mod formula_tests {
         let formula = Formula::try_from("!(a&b)|c&(a>b)".to_string()).unwrap();
 
         let vals = [
+            // c     b       a
             ([false, false, false], true),
             ([true, false, false], true),
             ([true, true, false], false),
@@ -604,5 +609,121 @@ mod formula_tests {
             let vars = bool_to_biguint(&input);
             assert_eq!(formula.solve(&vars), expected, "failed on {:?}", input);
         }
+    }
+
+    #[test]
+    fn test_parentheses_override() {
+        // a | b & c normally parses as a | (b & c)
+        // but here parentheses force (a | b) & c
+        let formula = Formula::try_from("(a|b)&c".to_string()).unwrap();
+
+        let vals = [
+            ([false, false, false], false),
+            ([true, false, false], false),
+            ([false, true, false], false),
+            ([true, true, true], true),
+            ([true, false, true], true),
+            ([false, true, true], true),
+        ];
+
+        for (input, expected) in vals {
+            assert_eq!(
+                formula.solve(&bool_to_biguint(&input)),
+                expected,
+                "failed on {:?}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_nested_parentheses() {
+        let formula = Formula::try_from("((a&b)|(!c))>d".to_string()).unwrap();
+
+        let vals = [
+            //  d     c     b       a
+            ([false, false, false, false], false),
+            ([true, true, false, false], false),
+            ([true, true, true, true], true),
+            ([false, true, false, true], true),
+        ];
+
+        for (input, expected) in vals {
+            assert_eq!(
+                formula.solve(&bool_to_biguint(&input)),
+                expected,
+                "Expected: {} from: {:?}",
+                expected,
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_tautology_and_contradiction() {
+        let taut = Formula::try_from("a|!a".to_string()).unwrap();
+        let contradiction = Formula::try_from("a&!a".to_string()).unwrap();
+
+        for val in [true, false] {
+            let input = bool_to_biguint(&[val]);
+            assert!(taut.solve(&input));
+            assert!(!contradiction.solve(&input));
+        }
+    }
+
+    #[test]
+    fn test_whitespace_tolerance() {
+        let spaced = Formula::try_from(" ( a  &  b )  |  ! c ".to_string()).unwrap();
+        let compact = Formula::try_from("(a&b)|!c".to_string()).unwrap();
+
+        for input in [
+            [false, false, false],
+            [true, true, false],
+            [false, true, true],
+            [true, false, true],
+        ] {
+            let vars = bool_to_biguint(&input);
+            assert_eq!(spaced.solve(&vars), compact.solve(&vars));
+        }
+    }
+
+    #[test]
+    fn test_complex_chain_mixed() {
+        // a > b & (c | !d)
+        let formula = Formula::try_from("a>b&(c|!d)".to_string()).unwrap();
+
+        let vals = [
+            ([false, false, false, false], true),
+            ([true, false, true, false], false),
+            ([true, false, false, false], false),
+            ([true, true, false, true], false),
+        ];
+
+        for (input, expected) in vals {
+            let vars = bool_to_biguint(&input);
+            assert_eq!(formula.solve(&vars), expected, "failed on {:?}", input);
+        }
+    }
+
+    #[test]
+    fn test_repeated_variables() {
+        let formula = Formula::try_from("a & (a | !a)".to_string()).unwrap();
+
+        let vals = [([false], false), ([true], true)];
+
+        for (input, expected) in vals {
+            assert_eq!(formula.solve(&bool_to_biguint(&input)), expected);
+        }
+    }
+
+    #[test]
+    fn test_long_chain_of_variables() {
+        // Ensure parser handles more than a few variables
+        let formula = Formula::try_from("a&b&c&d&e".to_string()).unwrap();
+        let all_true = bool_to_biguint(&[true, true, true, true, true]);
+        let one_false = bool_to_biguint(&[true, true, false, true, true]);
+
+        assert!(formula.solve(&all_true));
+        assert!(!formula.solve(&one_false));
     }
 }
