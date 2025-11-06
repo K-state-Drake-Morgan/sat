@@ -4,7 +4,7 @@ use clap::{Parser, ValueEnum};
 use log::{info, warn};
 use std::path::PathBuf;
 
-pub mod solver;
+mod solver;
 use solver::formula::Formula;
 
 /// Configuration for running this command

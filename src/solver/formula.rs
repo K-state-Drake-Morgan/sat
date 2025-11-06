@@ -55,22 +55,6 @@ impl FormulaOperator {
     }
 }
 
-/// Part of a boolean formula but with only non smaller parts
-#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
-pub enum FormulaPart {
-    /// Boolean And
-    And,
-    /// Boolean Or
-    Or,
-    /// Boolean Not
-    Not,
-    /// Boolean Varible like x or y
-    Variable, // using usize as identifier, will use hashmap to go from string to ussize
-    // The usize is the 2^n for a big int for use to bit mask
-    /// Boolean Constant: true or false
-    Constant, // for clause elimination
-}
-
 /// A Formula with names to varible position
 #[derive(Debug)]
 pub struct Formula {
@@ -248,9 +232,7 @@ pub enum InvalidFormulaPart {
     ///
     UnclosedParenthisies,
     ///
-    InvalidOperand(FormulaPart),
-    ///
-    InvalidPostFix,
+    InvalidOperand,
 }
 
 impl Display for InvalidFormulaPart {
@@ -271,7 +253,7 @@ impl TryFrom<String> for Formula {
         let mut stack: Vec<FormulaOperator> = Vec::with_capacity(value.len() >> 1);
         let mut previous: Option<&FormulaOperator> = None;
         for (line_number, line) in value.lines().enumerate() {
-            for (column, character) in line.chars().enumerate() {
+            'reading: for (column, character) in line.chars().enumerate() {
                 trace!("Testing: {}", character);
                 trace!("Buffer: {}", buffer);
                 if character.is_whitespace() {
@@ -282,11 +264,22 @@ impl TryFrom<String> for Formula {
                     '(' => {
                         // Push any pending variable in buffer first
                         if !buffer.is_empty() {
-                            trace!("Pushing Variable: {}", buffer);
-                            let l = names.len();
-                            let index = *names.entry(buffer.clone()).or_insert(l);
-                            data.push(AtomicFormulaPart::Variable(index));
-                            buffer.clear();
+                            if buffer == "T".to_string() || buffer == "F".to_string() {
+                                trace!("Pushing Constant: {}", buffer);
+                                if buffer == "T".to_string() {
+                                    data.push(AtomicFormulaPart::Constant(true));
+                                } else {
+                                    data.push(AtomicFormulaPart::Constant(false));
+                                }
+
+                                buffer.clear();
+                            } else {
+                                trace!("Pushing Variable: {}", buffer);
+                                let l = names.len();
+                                let index = *names.entry(buffer.clone()).or_insert(l);
+                                data.push(AtomicFormulaPart::Variable(index));
+                                buffer.clear();
+                            }
                         }
                         stack.push(FormulaOperator::OpenParenthisies {
                             line: line_number,
@@ -297,18 +290,31 @@ impl TryFrom<String> for Formula {
 
                     ')' => {
                         if !buffer.is_empty() {
-                            trace!("Pushing Variable: {}", buffer);
+                            if buffer == "T".to_string() || buffer == "F".to_string() {
+                                trace!("Pushing Constant: {}", buffer);
+                                if buffer == "T".to_string() {
+                                    data.push(AtomicFormulaPart::Constant(true));
+                                } else {
+                                    data.push(AtomicFormulaPart::Constant(false));
+                                }
 
-                            let l = names.len();
-                            let index = *names.entry(buffer.clone()).or_insert(l);
-                            data.push(AtomicFormulaPart::Variable(index));
-                            buffer.clear();
+                                buffer.clear();
+                            } else {
+                                trace!("Pushing Variable: {}", buffer);
+                                let l = names.len();
+                                let index = *names.entry(buffer.clone()).or_insert(l);
+                                data.push(AtomicFormulaPart::Variable(index));
+                                buffer.clear();
+                            }
                         }
 
                         // Pop until '('
                         while let Some(op) = stack.pop() {
                             match op {
-                                FormulaOperator::OpenParenthisies { .. } => break,
+                                FormulaOperator::OpenParenthisies { .. } => {
+                                    previous = None;
+                                    continue 'reading;
+                                }
                                 FormulaOperator::And => data.push(AtomicFormulaPart::And),
                                 FormulaOperator::Or => data.push(AtomicFormulaPart::Or),
                                 FormulaOperator::Not => data.push(AtomicFormulaPart::Not),
@@ -317,7 +323,11 @@ impl TryFrom<String> for Formula {
                                 }
                             }
                         }
-                        previous = None;
+                        return Err(InvalidFormula {
+                            line: line_number,
+                            column,
+                            error: InvalidFormulaPart::ExtraParenthisies,
+                        });
                     }
 
                     '&' | '|' | '!' | '>' => {
@@ -333,7 +343,7 @@ impl TryFrom<String> for Formula {
                                     return Err(InvalidFormula {
                                         line: line_number,
                                         column,
-                                        error: InvalidFormulaPart::InvalidPostFix,
+                                        error: InvalidFormulaPart::InvalidOperand,
                                     });
                                 }
                                 _ => {}
@@ -341,11 +351,22 @@ impl TryFrom<String> for Formula {
                         }
 
                         if !buffer.is_empty() {
-                            trace!("Pushing Variable: {}", buffer);
-                            let l = names.len();
-                            let index = *names.entry(buffer.clone()).or_insert(l);
-                            data.push(AtomicFormulaPart::Variable(index));
-                            buffer.clear();
+                            if buffer == "T".to_string() || buffer == "F".to_string() {
+                                trace!("Pushing Constant: {}", buffer);
+                                if buffer == "T".to_string() {
+                                    data.push(AtomicFormulaPart::Constant(true));
+                                } else {
+                                    data.push(AtomicFormulaPart::Constant(false));
+                                }
+
+                                buffer.clear();
+                            } else {
+                                trace!("Pushing Variable: {}", buffer);
+                                let l = names.len();
+                                let index = *names.entry(buffer.clone()).or_insert(l);
+                                data.push(AtomicFormulaPart::Variable(index));
+                                buffer.clear();
+                            }
                         }
 
                         let current = match character {
@@ -372,13 +393,10 @@ impl TryFrom<String> for Formula {
                             _ => unreachable!(),
                         };
 
-                        // Precedence-aware operator popping (Shunting-Yard)
-
                         while let Some(top) = stack.last() {
                             let top_prec = top.precedence();
                             let curr_prec = current.precedence();
 
-                            // correct associativity handling:
                             let should_pop = if current.right_assosiate() {
                                 curr_prec < top_prec
                             } else {
@@ -410,14 +428,19 @@ impl TryFrom<String> for Formula {
             }
         }
         if !buffer.is_empty() {
-            trace!("Pushing Varible: {}", buffer);
-            if let Some(index) = names.get(&buffer) {
-                data.push(AtomicFormulaPart::Variable(*index));
+            if buffer == "T".to_string() || buffer == "F".to_string() {
+                trace!("Pushing Constant: {}", buffer);
+                if buffer == "T".to_string() {
+                    data.push(AtomicFormulaPart::Constant(true));
+                } else {
+                    data.push(AtomicFormulaPart::Constant(false));
+                }
 
                 buffer.clear();
             } else {
-                let index = names.len();
-                names.insert(buffer.clone(), index);
+                trace!("Pushing Variable: {}", buffer);
+                let l = names.len();
+                let index = *names.entry(buffer.clone()).or_insert(l);
                 data.push(AtomicFormulaPart::Variable(index));
                 buffer.clear();
             }
