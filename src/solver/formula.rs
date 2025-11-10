@@ -8,7 +8,89 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
+use std::ops::BitAnd;
+use std::ops::BitOr;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::ops::Not;
 // use std::sync::Arc; so far I have found that for large formulas the
+
+/// A Value that could be a true or false
+struct MaybeBool(Option<bool>);
+
+impl Deref for MaybeBool {
+    type Target = Option<bool>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for MaybeBool {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Not for MaybeBool {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        match *self {
+            Some(v) => MaybeBool(Some(!v)),
+            None => MaybeBool(None),
+        }
+    }
+}
+
+impl BitAnd for MaybeBool {
+    type Output = MaybeBool;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        match (*self, *rhs) {
+            (Some(false), _) | (_, Some(false)) => MaybeBool(Some(false)),
+            (Some(true), Some(true)) => MaybeBool(Some(true)),
+            (Some(true), None) | (None, Some(true)) => MaybeBool(None),
+            (None, None) => MaybeBool(None),
+        }
+    }
+}
+
+impl BitOr for MaybeBool {
+    type Output = MaybeBool;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        match (*self, *rhs) {
+            (Some(true), _) | (_, Some(true)) => MaybeBool(Some(true)),
+            (Some(false), Some(false)) => MaybeBool(Some(false)),
+            (Some(false), None) | (None, Some(false)) => MaybeBool(None),
+            (None, None) => MaybeBool(None),
+        }
+    }
+}
+
+impl MaybeBool {
+    /// Unknown condition
+    const fn unknown() -> Self {
+        MaybeBool(None)
+    }
+
+    /// Condition is known
+    const fn some(value: bool) -> Self {
+        MaybeBool(Some(value))
+    }
+
+    /// For sat
+    fn is_conflict(&self) -> bool {
+        matches!(self.0, Some(false))
+    }
+
+    /// for sat
+    fn is_satisfied(&self) -> bool {
+        matches!(self.0, Some(true))
+    }
+
+    /// for sat
+    fn is_unknown(&self) -> bool {
+        self.0.is_none()
+    }
+}
 
 /// Part of a boolean formula but with only non smaller parts
 #[derive(Debug, PartialEq, Eq)]
@@ -69,6 +151,7 @@ impl Formula {
     pub fn operands(&self) -> usize {
         self.names.len()
     }
+
     /// panics if the formula is nonsensical
     pub fn solve(&self, variables: &BigUint) -> bool {
         let mut stack: Vec<bool> = Vec::with_capacity(self.data.len() >> 2);
@@ -109,6 +192,90 @@ impl Formula {
             width = self.names.len()
         );
         result
+    }
+
+    /// deduce a SAT problem via CDCL-style deduction over postfix form
+    pub fn deduce(&self) -> Option<BigUint> {
+        let mut assignment: Vec<Option<bool>> = vec![None; self.names.len()];
+        let mut decisions: Vec<(usize, bool)> = Vec::new();
+
+        loop {
+            // --- Symbolic evaluation / deduction ---
+            let mut stack: Vec<MaybeBool> = Vec::with_capacity(self.data.len());
+            for part in &self.data {
+                match part {
+                    AtomicFormulaPart::Variable(i) => stack.push(match assignment[*i] {
+                        Some(b) => MaybeBool::some(b),
+                        None => MaybeBool::unknown(),
+                    }),
+                    AtomicFormulaPart::Not => {
+                        let a = stack.pop().unwrap();
+                        stack.push(!a);
+                    }
+                    AtomicFormulaPart::And => {
+                        let r = stack.pop().unwrap();
+                        let l = stack.pop().unwrap();
+                        stack.push(l & r);
+                    }
+                    AtomicFormulaPart::Or => {
+                        let r = stack.pop().unwrap();
+                        let l = stack.pop().unwrap();
+                        stack.push(l | r);
+                    }
+                    AtomicFormulaPart::Constant(b) => stack.push(MaybeBool::some(*b)),
+                }
+            }
+
+            let result = stack.pop().unwrap();
+
+            // --- Case 1: formula definitely true under current assignment ---
+            if result.is_satisfied() {
+                // If fully assigned → found a full satisfying model
+                if assignment.iter().all(|a| a.is_some()) {
+                    let mut bits = BigUint::zero();
+                    for bit in assignment.iter().rev() {
+                        bits <<= 1;
+                        if bit.unwrap() {
+                            bits += BigUint::one();
+                        }
+                    }
+                    return Some(bits);
+                } else {
+                    // Partially assigned but formula already true ⇒ also fine
+                    // We can stop here; any completion satisfies
+                    let mut bits = BigUint::zero();
+                    for bit in assignment.iter().rev() {
+                        bits <<= 1;
+                        if bit.unwrap_or(false) {
+                            bits += BigUint::one();
+                        }
+                    }
+                    return Some(bits);
+                }
+            }
+
+            // --- Case 2: formula definitely false (conflict) ---
+            if result.is_conflict() {
+                if let Some((var, val)) = decisions.pop() {
+                    // Backtrack: flip last decision
+                    assignment[var] = Some(!val);
+                    continue;
+                } else {
+                    // No more decisions to backtrack ⇒ UNSAT
+                    return None;
+                }
+            }
+
+            // --- Case 3: Undecided (some variables unknown, result = None) ---
+            if let Some(i) = assignment.iter().position(|a| a.is_none()) {
+                // Make a decision: assign next unknown variable true
+                assignment[i] = Some(true);
+                decisions.push((i, true));
+            } else {
+                // No unknowns but result still undecided? (Shouldn't happen)
+                return None;
+            }
+        }
     }
 
     /// fully solve a given boolean formula looking for a true
@@ -748,5 +915,120 @@ mod formula_tests {
 
         assert!(formula.solve(&all_true));
         assert!(!formula.solve(&one_false));
+    }
+
+    fn run_deduction_test(size: usize) {
+        let data =
+            std::fs::read_to_string(format!("sat_formulas/sat_{size}x{size}_expression.txt"))
+                .expect("Unable to read file");
+        let parser = Formula::try_from(data).unwrap();
+        assert!(
+            parser.deduce().is_some_and(|x| parser.solve(&x)),
+            "Failed on: {}",
+            size
+        );
+    }
+
+    #[test]
+    fn deduction_correctly_finds_satisabillity_2() {
+        run_deduction_test(2);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_3() {
+        run_deduction_test(3);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_4() {
+        run_deduction_test(4);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_5() {
+        run_deduction_test(5);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_6() {
+        run_deduction_test(6);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_7() {
+        run_deduction_test(7);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_8() {
+        run_deduction_test(8);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_9() {
+        run_deduction_test(9);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_10() {
+        run_deduction_test(10);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_11() {
+        run_deduction_test(11);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_12() {
+        run_deduction_test(12);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_13() {
+        run_deduction_test(13);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_14() {
+        run_deduction_test(14);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_15() {
+        run_deduction_test(15);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_16() {
+        run_deduction_test(16);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_17() {
+        run_deduction_test(17);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_18() {
+        run_deduction_test(18);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_19() {
+        run_deduction_test(19);
+    }
+    #[test]
+    fn deduction_correctly_finds_satisabillity_20() {
+        run_deduction_test(20);
+    }
+
+    #[test]
+    fn deduction_correctly_detects_unsatisfiable_formula() {
+        // This is a simple contradiction: (a AND !a)
+        let data = "a & !a";
+        let parser = Formula::try_from(data.to_string()).unwrap();
+
+        // Expect `deduce()` to return None because the formula is unsatisfiable
+        assert!(
+            parser.deduce().is_none(),
+            "Expected unsatisfiable formula to return None"
+        );
+    }
+
+    #[test]
+    fn deduction_detects_unsatisfiable_complex_formula() {
+        // Example: (a OR b) AND (!a OR !b) AND (a) AND (b)
+        // This forces a=true and b=true, but then (!a OR !b) becomes false → unsatisfiable
+        let data = "(a | b) & (!a | !b) & a & b";
+        let parser = Formula::try_from(data.to_string()).unwrap();
+
+        assert!(
+            parser.deduce().is_none(),
+            "Expected complex unsatisfiable formula to return None"
+        );
     }
 }
