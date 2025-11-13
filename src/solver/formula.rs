@@ -168,7 +168,7 @@ impl Formula {
                 AtomicFormulaPart::Variable(var) => {
                     let bit = (variables >> var) & BigUint::from(1u8);
                     stack.push(!bit.is_zero());
-                    trace!(
+                    tracing::trace!(
                         "{} is {}",
                         self.names.get(*var).unwrap(),
                         stack.last().unwrap()
@@ -193,7 +193,7 @@ impl Formula {
         }
         assert_eq!(stack.len(), 1, "formula not fully reduced");
         let result = stack.pop().unwrap();
-        trace!(
+        tracing::trace!(
             "Tried: {:0width$b} and got: {}",
             variables,
             result,

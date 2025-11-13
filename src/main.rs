@@ -1,6 +1,7 @@
 //! Command to solve a sat problem
 
 use clap::{Parser, ValueEnum};
+use log::debug;
 use log::{info, warn};
 use num_bigint::BigUint;
 use num_traits::One;
@@ -128,6 +129,7 @@ fn main_cli(args: Arguments) {
 }
 
 fn main_tui(args: Arguments) {
+    trace!("Getting formula");
     let input_contents = match (&args.file, &args.problem) {
         (Some(file_path), Some(problem_str)) => {
             if file_path.exists() && file_path.is_file() {
@@ -161,12 +163,16 @@ fn main_tui(args: Arguments) {
             "".to_string()
         }
     };
+
+    debug!("Got formula!");
+
     let terminal = ratatui::init();
     let _ = tui::run(terminal, input_contents);
     ratatui::restore();
 }
 
 fn main_gui(args: Arguments) {
+    trace!("Getting formula");
     let mut sat_formula_string = match (&args.file, &args.problem) {
         (Some(file_path), Some(problem_str)) => {
             if file_path.exists() && file_path.is_file() {
@@ -197,6 +203,8 @@ fn main_gui(args: Arguments) {
         (None, Some(problem_str)) => problem_str.clone(),
         (None, None) => "(a|b)>(b&c)".to_owned(),
     };
+
+    debug!("Got formula!");
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([480.0, 400.0]),
