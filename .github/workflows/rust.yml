@@ -61,6 +61,12 @@ jobs:
         with:
           rustflags: ""
 
+      - name: Unzip test files
+        uses: ihiroky/extract-action@v1
+        with:
+          file_path: sat_formulas/sat_NxN_expresion.tar.xz
+          extract_dir: sat_formulas
+
       - name: Test
         run: cargo test
 
