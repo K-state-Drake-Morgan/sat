@@ -6,6 +6,7 @@ use log::{info, warn};
 use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use tracing::trace;
 
@@ -69,7 +70,14 @@ fn main_cli(args: Arguments) {
                     "Both file and problem provided; using file at {:?}",
                     file_path
                 );
-                std::fs::read_to_string(file_path).expect("Unable to read file path")
+                if let Some(extention) = file_path.extension()
+                    && extention == OsStr::new("cnf")
+                {
+                    from_cnf(file_path)
+                } else {
+                    debug!("Not CNF file");
+                    std::fs::read_to_string(file_path).expect("Unable to read file path")
+                }
             } else {
                 warn!(
                     "File {:?} does not exist; using problem string instead",
@@ -80,7 +88,14 @@ fn main_cli(args: Arguments) {
         }
         (Some(file_path), None) => {
             if file_path.exists() && file_path.is_file() {
-                std::fs::read_to_string(file_path).expect("Unable to read file path")
+                if let Some(extention) = file_path.extension()
+                    && extention == OsStr::new("cnf")
+                {
+                    from_cnf(file_path)
+                } else {
+                    debug!("Not a CNF File");
+                    std::fs::read_to_string(file_path).expect("Unable to read file path")
+                }
             } else {
                 eprintln!(
                     "Error: File {:?} does not exist or is not a valid file.",
@@ -128,6 +143,47 @@ fn main_cli(args: Arguments) {
     }
 }
 
+/// for more information on cnf files see:
+/// https://people.sc.fsu.edu/~jburkardt/data/cnf/cnf.html
+fn from_cnf(file_path: &PathBuf) -> String {
+    debug!("CNF File");
+
+    let temp = std::fs::read_to_string(file_path).expect("Unable to read file");
+    let mut result = String::new();
+    let mut current_clause: Vec<String> = Vec::new();
+
+    for line in temp.lines() {
+        let line = line.trim();
+
+        if line.is_empty() || line.starts_with('c') || line.starts_with('p') {
+            continue;
+        }
+
+        for token in line.split_whitespace() {
+            if token == "0" {
+                if !current_clause.is_empty() {
+                    result.push('(');
+                    result.push_str(&current_clause.join("|"));
+                    result.push(')');
+                    result.push('&');
+                    current_clause.clear();
+                }
+            } else if token.starts_with('-') {
+                let new = &token[1..token.len()];
+                current_clause.push(format!("!{}", new));
+            } else {
+                current_clause.push(format!("{}", token));
+            }
+        }
+    }
+
+    while result.ends_with('&') {
+        result.pop();
+    }
+
+    result
+}
+
 fn main_tui(args: Arguments) {
     trace!("Getting formula");
     let input_contents = match (&args.file, &args.problem) {
@@ -137,7 +193,14 @@ fn main_tui(args: Arguments) {
                     "Both file and problem provided; using file at {:?}",
                     file_path
                 );
-                std::fs::read_to_string(file_path).expect("Unable to read file path")
+                if let Some(extention) = file_path.extension()
+                    && extention == OsStr::new("cnf")
+                {
+                    from_cnf(file_path)
+                } else {
+                    debug!("Not CNF file");
+                    std::fs::read_to_string(file_path).expect("Unable to read file path")
+                }
             } else {
                 warn!(
                     "File {:?} does not exist; using problem string instead",
@@ -148,7 +211,14 @@ fn main_tui(args: Arguments) {
         }
         (Some(file_path), None) => {
             if file_path.exists() && file_path.is_file() {
-                std::fs::read_to_string(file_path).expect("Unable to read file path")
+                if let Some(extention) = file_path.extension()
+                    && extention == OsStr::new("cnf")
+                {
+                    from_cnf(file_path)
+                } else {
+                    debug!("Not a CNF File");
+                    std::fs::read_to_string(file_path).expect("Unable to read file path")
+                }
             } else {
                 eprintln!(
                     "Error: File {:?} does not exist or is not a valid file.",
@@ -191,7 +261,14 @@ fn main_gui(args: Arguments) {
         }
         (Some(file_path), None) => {
             if file_path.exists() && file_path.is_file() {
-                std::fs::read_to_string(file_path).expect("Unable to read file path")
+                if let Some(extention) = file_path.extension()
+                    && extention == OsStr::new("cnf")
+                {
+                    from_cnf(file_path)
+                } else {
+                    debug!("Not a CNF File");
+                    std::fs::read_to_string(file_path).expect("Unable to read file path")
+                }
             } else {
                 eprintln!(
                     "Error: File {:?} does not exist or is not a valid file.",
