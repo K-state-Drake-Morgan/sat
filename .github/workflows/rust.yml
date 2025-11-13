@@ -36,7 +36,7 @@ jobs:
           rustflags: ""
 
       - name: Build
-        run: cargo xtask build
+        run: cargo build
 
   test:
     name: Test
@@ -62,7 +62,7 @@ jobs:
           rustflags: ""
 
       - name: Test
-        run: cargo xtask test
+        run: cargo test
 
   test-no-web:
     name: Test (No Web)
@@ -82,7 +82,7 @@ jobs:
           rustflags: ""
 
       - name: Test without web support
-        run: cargo xtask test --no-web
+        run: cargo test
 
   format:
     name: Check Formatting
@@ -97,4 +97,4 @@ jobs:
           rustflags: ""
 
       - name: Check Format
-        run: cargo xtask format --check
+        run: cargo format --check
