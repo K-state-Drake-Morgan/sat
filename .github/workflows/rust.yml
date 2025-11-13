@@ -1,52 +1,100 @@
+# from zellij
+
+name: Rust
+
 on:
-  release:
-    [created]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: Release - ${{ matrix.platform.os-name }}
+  build:
+    name: Build
+
     strategy:
+      fail-fast: false
       matrix:
-        platform:
-          - os-name: FreeBSD-x86_64
-            runs-on: ubuntu-24.04
-            target: x86_64-unknown-freebsd
+        os: [ubuntu-latest, macos-latest]
 
-          - os-name: Linux-x86_64
-            runs-on: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
+    runs-on: ${{ matrix.os }}
 
-          - os-name: Linux-aarch64
-            runs-on: ubuntu-24.04
-            target: aarch64-unknown-linux-musl
-
-          - os-name: Linux-riscv64
-            runs-on: ubuntu-24.04
-            target: riscv64gc-unknown-linux-gnu
-
-          - os-name: Windows-x86_64
-            runs-on: windows-latest
-            target: x86_64-pc-windows-msvc
-
-          - os-name: macOS-x86_64
-            runs-on: macOS-latest
-            target: x86_64-apple-darwin
-
-          # more targets here ...
-
-    runs-on: ${{ matrix.platform.runs-on }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v1
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
         with:
-          command: build
-          target: ${{ matrix.platform.target }}
-          args: "--locked --release"
-          strip: true
-      - name: Publish artifacts and release
-        uses: houseabsolute/actions-rust-release@v0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          executable-name: ubi
-          target: ${{ matrix.platform.target }}
+          rustflags: ""
+
+      - name: Build
+        run: cargo xtask build
+
+  test:
+    name: Test
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Test
+        run: cargo xtask test
+
+  test-no-web:
+    name: Test (No Web)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Test without web support
+        run: cargo xtask test --no-web
+
+  format:
+    name: Check Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Check Format
+        run: cargo xtask format --check
