@@ -5,7 +5,7 @@ on:
     tags:
       - 'v*' # Trigger only when you push a version tag like v1.0.0
   release:
-    [created]
+    types: [created]
 
 env:
   CARGO_TERM_COLOR: always
