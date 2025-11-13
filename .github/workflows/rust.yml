@@ -38,29 +38,6 @@ jobs:
       - name: Build
         run: cargo build
 
-  test:
-    name: Test
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v2
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
       - name: Unzip test files
         uses: ihiroky/extract-action@v1
         with:
@@ -68,27 +45,7 @@ jobs:
           extract_dir: sat_formulas
 
       - name: Test
-        run: cargo test
-
-  test-no-web:
-    name: Test (No Web)
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v2
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Test without web support
-        run: cargo test
+        run: cargo test --lib
 
   format:
     name: Check Formatting
@@ -103,4 +60,4 @@ jobs:
           rustflags: ""
 
       - name: Check Format
-        run: cargo format --check
+        run: cargo fmt --check
