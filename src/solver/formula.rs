@@ -85,11 +85,6 @@ impl MaybeBool {
     fn is_satisfied(&self) -> bool {
         matches!(self.0, Some(true))
     }
-
-    /// for sat
-    fn is_unknown(&self) -> bool {
-        self.0.is_none()
-    }
 }
 
 /// Part of a boolean formula but with only non smaller parts
@@ -143,10 +138,23 @@ pub struct Formula {
     /// data stored in postfix
     data: Vec<AtomicFormulaPart>,
     /// named variables
-    names: Vec<String>,
+    pub names: Vec<String>,
 }
 
 impl Formula {
+    // /// Creates and empty formula
+    // pub fn empty() -> Formula {
+    //     Formula {
+    //         names: Vec::new(),
+    //         data: Vec::new(),
+    //     }
+    // }
+
+    // /// a check to see if the formula is empty
+    // pub fn is_empty(&self) -> bool {
+    //     self.names.is_empty() && self.data.is_empty()
+    // }
+
     /// how many named varibles there are
     pub fn operands(&self) -> usize {
         self.names.len()
@@ -200,7 +208,6 @@ impl Formula {
         let mut decisions: Vec<(usize, bool)> = Vec::new();
 
         loop {
-            // --- Symbolic evaluation / deduction ---
             let mut stack: Vec<MaybeBool> = Vec::with_capacity(self.data.len());
             for part in &self.data {
                 match part {
@@ -228,51 +235,30 @@ impl Formula {
 
             let result = stack.pop().unwrap();
 
-            // --- Case 1: formula definitely true under current assignment ---
             if result.is_satisfied() {
-                // If fully assigned → found a full satisfying model
-                if assignment.iter().all(|a| a.is_some()) {
-                    let mut bits = BigUint::zero();
-                    for bit in assignment.iter().rev() {
-                        bits <<= 1;
-                        if bit.unwrap() {
-                            bits += BigUint::one();
-                        }
+                let mut bits = BigUint::zero();
+                for bit in assignment.iter().rev() {
+                    bits <<= 1;
+                    if bit.unwrap_or(false) {
+                        bits += BigUint::one();
                     }
-                    return Some(bits);
-                } else {
-                    // Partially assigned but formula already true ⇒ also fine
-                    // We can stop here; any completion satisfies
-                    let mut bits = BigUint::zero();
-                    for bit in assignment.iter().rev() {
-                        bits <<= 1;
-                        if bit.unwrap_or(false) {
-                            bits += BigUint::one();
-                        }
-                    }
-                    return Some(bits);
                 }
+                return Some(bits);
             }
 
-            // --- Case 2: formula definitely false (conflict) ---
             if result.is_conflict() {
                 if let Some((var, val)) = decisions.pop() {
-                    // Backtrack: flip last decision
                     assignment[var] = Some(!val);
                     continue;
                 } else {
-                    // No more decisions to backtrack ⇒ UNSAT
                     return None;
                 }
             }
 
-            // --- Case 3: Undecided (some variables unknown, result = None) ---
             if let Some(i) = assignment.iter().position(|a| a.is_none()) {
-                // Make a decision: assign next unknown variable true
                 assignment[i] = Some(true);
                 decisions.push((i, true));
             } else {
-                // No unknowns but result still undecided? (Shouldn't happen)
                 return None;
             }
         }
@@ -368,9 +354,9 @@ impl Formula {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InvalidFormula {
     /// Line in the string the error occured on
-    line: usize,
+    line: isize,
     /// Column in the string the error occured on
-    column: usize,
+    column: isize,
     /// Reason for the formula error
     error: InvalidFormulaPart,
 }
@@ -400,6 +386,10 @@ pub enum InvalidFormulaPart {
     UnclosedParenthisies,
     ///
     InvalidOperand,
+    ///
+    TooFewOperands,
+    ///
+    TooManyOperands,
 }
 
 impl Display for InvalidFormulaPart {
@@ -491,8 +481,8 @@ impl TryFrom<String> for Formula {
                             }
                         }
                         return Err(InvalidFormula {
-                            line: line_number,
-                            column,
+                            line: line_number as isize + 1,
+                            column: column as isize + 1,
                             error: InvalidFormulaPart::ExtraParenthisies,
                         });
                     }
@@ -508,8 +498,8 @@ impl TryFrom<String> for Formula {
                                     if buffer.is_empty() =>
                                 {
                                     return Err(InvalidFormula {
-                                        line: line_number,
-                                        column,
+                                        line: line_number as isize + 1,
+                                        column: column as isize + 1,
                                         error: InvalidFormulaPart::InvalidOperand,
                                     });
                                 }
@@ -618,8 +608,8 @@ impl TryFrom<String> for Formula {
                 FormulaOperator::OpenParenthisies { line, column } => {
                     // Any unclosed '(' is an error
                     return Err(InvalidFormula {
-                        line,
-                        column,
+                        line: line as isize + 1,
+                        column: column as isize + 1,
                         error: InvalidFormulaPart::UnclosedParenthisies,
                     });
                 }
@@ -646,7 +636,43 @@ impl TryFrom<String> for Formula {
         for key in names.keys() {
             out_names[*names.get(key).unwrap()] = key.clone();
         }
-        debug!("Got formula: {:?}", data);
+        debug!("Got formula!");
+        trace!("formula: {:?}", data);
+        let mut total: usize = 0;
+        for op in &data {
+            match op {
+                AtomicFormulaPart::Variable(_) | AtomicFormulaPart::Constant(_) => total += 1,
+                AtomicFormulaPart::And | AtomicFormulaPart::Or => {
+                    let new_total = total.checked_sub(1);
+                    match new_total {
+                        Some(x) => total = x,
+                        None => {
+                            return Err(InvalidFormula {
+                                line: -1,
+                                column: -1,
+                                error: InvalidFormulaPart::TooManyOperands,
+                            });
+                        }
+                    }
+                }
+                AtomicFormulaPart::Not => {
+                    if total == 0 {
+                        return Err(InvalidFormula {
+                            line: -1,
+                            column: -1,
+                            error: InvalidFormulaPart::TooManyOperands,
+                        });
+                    }
+                }
+            }
+        }
+        if total != 1 {
+            return Err(InvalidFormula {
+                line: -1,
+                column: -1,
+                error: InvalidFormulaPart::TooFewOperands,
+            });
+        }
         Ok(Formula {
             names: out_names,
             data: data,
@@ -663,7 +689,7 @@ mod formula_tests {
     fn bool_to_biguint(bools: &[bool]) -> BigUint {
         // Converts [true, false, true] → bit pattern 101 (binary)
         bools.iter().rev().fold(BigUint::zero(), |acc, &bit| {
-            (acc << 1u8) + if bit { BigUint::one() } else { BigUint::zero() }
+            (acc << 1) + if bit { BigUint::one() } else { BigUint::zero() }
         })
     }
 

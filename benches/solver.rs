@@ -1,86 +1,55 @@
 #![allow(missing_docs)]
 
-//! benching
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+//! Benchmarking the SAT solvers: full vs. deduction-based.
 
+use criterion::{BenchmarkId, Criterion, SamplingMode, criterion_group, criterion_main};
 use sat::{self, solver::formula::Formula};
 
-/// Bench fully solving a problem that allways has a true ness
-pub fn bench_full_solver(c: &mut Criterion) {
-    let mut full_sat_group = c.benchmark_group("Full Sat Solver");
+/// Benchmarks both the full solver and the deduction solver for comparison.
+pub fn bench_solver_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("SAT Solver Comparison");
 
-    for size in 2..=20 {
+    for size in 2..=24 {
         let data =
             std::fs::read_to_string(format!("sat_formulas/sat_{size}x{size}_expression.txt"))
                 .expect("Unable to read file");
-
         let parser = Formula::try_from(data).unwrap();
 
-        let csize;
-        // Reduce Criterion's own measurement time for large inputs
-        let target_time = if size < 10 {
-            csize = 30;
-            std::time::Duration::from_secs(5)
+        // Adjust sample size and duration by problem size
+        let (csize, target_time) = if size < 10 {
+            (30, std::time::Duration::from_secs(5))
         } else if size < 15 {
-            csize = 15;
-            std::time::Duration::from_secs(3)
+            (15, std::time::Duration::from_secs(3))
         } else {
-            csize = 10;
-            std::time::Duration::from_secs(1)
+            (10, std::time::Duration::from_secs(1))
         };
 
-        full_sat_group
-            .sample_size(csize) // fewer samples → faster
-            .measurement_time(target_time) // shorter runs for large cases
-            .sampling_mode(criterion::SamplingMode::Flat);
+        group
+            .sample_size(csize)
+            .measurement_time(target_time)
+            .sampling_mode(SamplingMode::Flat);
 
-        full_sat_group.bench_function(BenchmarkId::from_parameter(size), |b| {
-            b.iter(|| {
-                std::hint::black_box(parser.fully_solve());
-            });
-        });
-    }
+        // --- Bench full solver ---
+        group.bench_with_input(
+            BenchmarkId::new("fully_solve", size),
+            &parser,
+            |b, parser| {
+                b.iter(|| {
+                    std::hint::black_box(parser.fully_solve());
+                });
+            },
+        );
 
-    full_sat_group.finish();
-}
-
-pub fn bench_deduction(c: &mut Criterion) {
-    let mut full_sat_group = c.benchmark_group("Deduction Sat Solver");
-
-    for size in 2..=20 {
-        let data =
-            std::fs::read_to_string(format!("sat_formulas/sat_{size}x{size}_expression.txt"))
-                .expect("Unable to read file");
-
-        let parser = Formula::try_from(data).unwrap();
-
-        let csize;
-        // Reduce Criterion's own measurement time for large inputs
-        let target_time = if size < 10 {
-            csize = 30;
-            std::time::Duration::from_secs(5)
-        } else if size < 15 {
-            csize = 15;
-            std::time::Duration::from_secs(3)
-        } else {
-            csize = 10;
-            std::time::Duration::from_secs(1)
-        };
-
-        full_sat_group
-            .sample_size(csize) // fewer samples → faster
-            .measurement_time(target_time) // shorter runs for large cases
-            .sampling_mode(criterion::SamplingMode::Flat);
-
-        full_sat_group.bench_function(BenchmarkId::from_parameter(size), |b| {
+        // --- Bench deduction solver ---
+        group.bench_with_input(BenchmarkId::new("deduce", size), &parser, |b, parser| {
             b.iter(|| {
                 std::hint::black_box(parser.deduce());
             });
         });
     }
 
-    full_sat_group.finish();
+    group.finish();
 }
 
-criterion_group!(benches, bench_full_solver, bench_deduction);
+criterion_group!(benches, bench_solver_comparison);
 criterion_main!(benches);
