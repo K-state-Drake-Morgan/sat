@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*' # Trigger only when you push a version tag like v1.0.0
+  release:
+    [created]
 
 env:
   CARGO_TERM_COLOR: always
