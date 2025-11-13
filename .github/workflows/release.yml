@@ -23,6 +23,9 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             bin_ext: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin_ext: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin_ext: ".exe"
@@ -41,6 +44,9 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           targets: ${{ matrix.target }}
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
