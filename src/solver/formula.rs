@@ -1,5 +1,6 @@
 //! The Parts needed to solve a boolean sat problem
 
+use log::info;
 use log::{debug, trace};
 use num_bigint::BigUint;
 use num_traits::One;
@@ -88,7 +89,7 @@ impl MaybeBool {
 }
 
 /// Part of a boolean formula but with only non smaller parts
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum AtomicFormulaPart {
     /// Boolean And
@@ -133,7 +134,7 @@ impl FormulaOperator {
 }
 
 /// A Formula with names to varible position
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub struct Formula {
     /// data stored in postfix
     data: Vec<AtomicFormulaPart>,
@@ -208,6 +209,7 @@ impl Formula {
         let mut decisions: Vec<(usize, bool)> = Vec::new();
 
         loop {
+            info!("New Iteration of deduction");
             let mut stack: Vec<MaybeBool> = Vec::with_capacity(self.data.len());
             for part in &self.data {
                 match part {

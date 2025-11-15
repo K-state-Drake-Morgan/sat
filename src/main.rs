@@ -1,6 +1,7 @@
 //! Command to solve a sat problem
 
 use clap::{Parser, ValueEnum};
+use egui::RichText;
 use log::debug;
 use log::{info, warn};
 use num_bigint::BigUint;
@@ -8,6 +9,8 @@ use num_traits::One;
 use num_traits::Zero;
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use tracing::trace;
 
 mod solver;
@@ -288,9 +291,10 @@ fn main_gui(args: Arguments) {
         ..Default::default()
     };
 
-    let mut last_solve: Option<BigUint> = None;
-    let mut last_formula: Option<Formula> = None;
-    let mut last_error: Option<String> = None;
+    let solving = Arc::new(Mutex::new(false));
+    let result = Arc::new(Mutex::new(None::<Option<BigUint>>));
+    let operands = Arc::new(Mutex::new(None::<Vec<String>>));
+    let error = Arc::new(Mutex::new(None::<String>));
 
     let _ = eframe::run_simple_native("SAT Solver GUI", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -315,76 +319,94 @@ fn main_gui(args: Arguments) {
 
             ui.horizontal(|ui| {
                 if ui.button("Solve").clicked() {
-                    match Formula::try_from(sat_formula_string.clone()) {
-                        Ok(f) => {
-                            last_error = None;
-                            last_solve = f.fully_solve();
-                            last_formula = Some(f);
+                    let formula_str = sat_formula_string.clone();
+                    let solving = solving.clone();
+                    let result = result.clone();
+                    let operands = operands.clone();
+                    let error = error.clone();
+
+                    // Mark solving started
+                    *solving.lock().unwrap() = true;
+                    *result.lock().unwrap() = None;
+                    *operands.lock().unwrap() = None;
+                    *error.lock().unwrap() = None;
+
+                    thread::spawn(move || {
+                        match Formula::try_from(formula_str) {
+                            Ok(f) => {
+                                let names = f.names.clone();
+                                let out = f.fully_solve();
+                                *result.lock().unwrap() = Some(out);
+                                *operands.lock().unwrap() = Some(names);
+                            }
+                            Err(e) => {
+                                *error.lock().unwrap() = Some(e.to_string());
+                            }
                         }
-                        Err(e) => {
-                            last_error = Some(format!("{}", e));
-                            last_formula = None;
-                        }
-                    }
+
+                        *solving.lock().unwrap() = false;
+                    });
                 }
 
                 if ui.button("Deduce").clicked() {
-                    match Formula::try_from(sat_formula_string.clone()) {
-                        Ok(f) => {
-                            last_error = None;
-                            last_solve = f.deduce();
-                            last_formula = Some(f);
+                    let formula_str = sat_formula_string.clone();
+                    let solving = solving.clone();
+                    let result = result.clone();
+                    let operands = operands.clone();
+                    let error = error.clone();
+
+                    // Mark solving started
+                    *solving.lock().unwrap() = true;
+                    *result.lock().unwrap() = None;
+                    *operands.lock().unwrap() = None;
+                    *error.lock().unwrap() = None;
+
+                    thread::spawn(move || {
+                        match Formula::try_from(formula_str) {
+                            Ok(f) => {
+                                let names = f.names.clone();
+                                let out = f.deduce();
+                                *result.lock().unwrap() = Some(out);
+                                *operands.lock().unwrap() = Some(names);
+                            }
+                            Err(e) => {
+                                *error.lock().unwrap() = Some(e.to_string());
+                            }
                         }
-                        Err(e) => {
-                            last_error = Some(format!("{}", e));
-                            last_formula = None;
-                        }
-                    }
+
+                        *solving.lock().unwrap() = false;
+                    });
                 }
             });
 
             ui.separator();
 
-            if let Some(err) = &last_error {
-                ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
-            }
+            let is_solving = *solving.lock().unwrap();
+            let last_error = error.lock().unwrap().clone();
+            let last_result = result.lock().unwrap().clone();
+            let last_operands = operands.lock().unwrap().clone();
 
-            // --- Output area fills remaining space ---
             egui::ScrollArea::vertical()
-                .id_salt("Sat Table")
+                .id_salt("Awsner")
                 .show(ui, |ui| {
-                    ui.set_min_height(ui.available_height()); // <- ensures it expands
-
-                    if let Some(result) = &last_solve {
-                        if result.is_zero() {
-                            ui.colored_label(egui::Color32::LIGHT_RED, "Unsatisfiable");
-                        } else {
-                            ui.colored_label(egui::Color32::GREEN, "Satisfiable");
-                        }
-
-                        if let Some(formula) = &last_formula {
-                            ui.separator();
-                            ui.label("Variable assignments:");
-                            if result.is_zero() {
-                                ui.label("No satisfying assignment found.");
-                            } else {
-                                let bits_str = format!("{:0b}", result);
-                                let mut bits: Vec<char> = bits_str.chars().rev().collect();
-                                while bits.len() < formula.names.len() {
-                                    bits.push('0');
-                                }
-                                for (i, name) in formula.names.iter().enumerate() {
-                                    let bit = bits[i];
-                                    let val = if bit == '1' { "true" } else { "false" };
-                                    ui.label(format!("{} = {}", name, val));
-                                }
+                    if let Some(err) = last_error {
+                        ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                    } else if is_solving {
+                        ui.heading(
+                            RichText::new("Solving, please wait…").color(egui::Color32::YELLOW),
+                        );
+                    } else if let Some(Some(ref aws)) = last_result {
+                        ui.heading(RichText::new("Satisfiable").color(egui::Color32::GREEN));
+                        ui.separator();
+                        ui.label("Variable assignments:");
+                        if let Some(ops) = last_operands {
+                            for (i, name) in ops.iter().enumerate() {
+                                let bit = (aws >> i) & BigUint::one() != BigUint::zero();
+                                ui.label(format!("{} = {}", name, bit));
                             }
                         }
-                    } else if last_formula.is_some() {
-                        ui.colored_label(
-                            egui::Color32::YELLOW,
-                            "No result yet — click Solve or Deduce.",
-                        );
+                    } else if last_result == Some(None) {
+                        ui.heading(RichText::new("Unsatisfiable").color(egui::Color32::LIGHT_RED));
                     }
                 });
         });
