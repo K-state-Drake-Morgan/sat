@@ -4,3 +4,4 @@ sat_formulas/*.txt
 flamegraph.svg
 perf.data
 perf.data.old
+sat_formulas/*.cnf
