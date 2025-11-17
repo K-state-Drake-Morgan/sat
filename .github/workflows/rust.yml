@@ -44,6 +44,12 @@ jobs:
           file_path: sat_formulas/sat_NxN_expresion.tar.xz
           extract_dir: sat_formulas
 
+      - name: Unzip bench files
+        uses: ihiroky/extract-action@v1
+        with:
+          file_path: sat_formulas/unsat_24xN_cnf.tar.xz
+          extract_dir: sat_formulas
+
       - name: Test
         run: cargo test --lib
 
