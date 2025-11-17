@@ -3160,6 +3160,7 @@ dependencies = [
 name = "sat"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "clap",
  "clap-verbosity-flag",
  "color-eyre",

@@ -1,12 +1,12 @@
 //! The Parts needed to solve a boolean sat problem
 
+use ahash::{HashMap, HashMapExt};
 use log::info;
 use log::{debug, trace};
 use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::BitAnd;
@@ -407,7 +407,7 @@ impl TryFrom<String> for Formula {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let mut data: Vec<AtomicFormulaPart> = Vec::with_capacity(value.len());
-        let mut names: HashMap<String, usize> = HashMap::new(); // will convert to a Vec later
+        let mut names: HashMap<String, usize> = HashMap::with_capacity(value.len()); // will convert to a Vec later
         let mut buffer: String = String::new();
         let mut stack: Vec<FormulaOperator> = Vec::with_capacity(value.len() >> 1);
         let mut previous: Option<&FormulaOperator> = None;
