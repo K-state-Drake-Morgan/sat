@@ -51,5 +51,41 @@ pub fn bench_solver_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_solver_comparison);
+pub fn bench_parser(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Get Sat Equation");
+
+    for size in 2..=24 {
+        let data =
+            std::fs::read_to_string(format!("sat_formulas/sat_{size}x{size}_expression.txt"))
+                .expect("Unable to read file");
+
+        // Adjust sample size and duration by problem size
+        let (csize, target_time) = if size < 10 {
+            (30, std::time::Duration::from_secs(5))
+        } else if size < 15 {
+            (15, std::time::Duration::from_secs(3))
+        } else {
+            (10, std::time::Duration::from_secs(1))
+        };
+
+        group
+            .sample_size(csize)
+            .measurement_time(target_time)
+            .sampling_mode(SamplingMode::Flat);
+
+        // --- Bench full solver ---
+        group.bench_with_input(BenchmarkId::new("NxN Parsing", size), &data, |b, data| {
+            b.iter(|| {
+                std::hint::black_box(
+                    Formula::try_from(data.clone()).expect(
+                        "Something In Testing Failed as we are unable to bench this Parser",
+                    ),
+                );
+            });
+        });
+    }
+
+    group.finish();
+}
+criterion_group!(benches, bench_parser, bench_solver_comparison);
 criterion_main!(benches);
