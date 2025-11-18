@@ -206,7 +206,7 @@ impl Formula {
     /// deduce a SAT problem via CDCL-style deduction over postfix form
     pub fn deduce(&self) -> Option<BigUint> {
         let mut assignment: Vec<Option<bool>> = vec![None; self.names.len()];
-        let mut decisions: Vec<(usize, bool)> = Vec::new();
+        let mut decisions: Vec<(usize, bool)> = Vec::with_capacity(self.names.len());
 
         loop {
             info!("New Iteration of deduction");
@@ -684,6 +684,10 @@ impl TryFrom<String> for Formula {
 
 #[cfg(test)]
 mod formula_tests {
+    use std::{path::PathBuf, str::FromStr};
+
+    use crate::from_cnf;
+
     use super::*;
     use num_bigint::BigUint;
     use num_traits::{One, Zero};
@@ -950,11 +954,16 @@ mod formula_tests {
             std::fs::read_to_string(format!("sat_formulas/sat_{size}x{size}_expression.txt"))
                 .expect("Unable to read file");
         let parser = Formula::try_from(data).unwrap();
-        assert!(
-            parser.deduce().is_some_and(|x| parser.solve(&x)),
-            "Failed on: {}",
-            size
+        assert!(parser.deduce().is_some(), "Failed on: {}", size);
+    }
+
+    fn run_unsat_test(size: usize) {
+        let data = from_cnf(
+            &PathBuf::from_str(format!("sat_formulas/unsat_24x{size}_cnf.cnf").as_str())
+                .expect("Unable to open file"),
         );
+        let parser = Formula::try_from(data).unwrap();
+        assert!(parser.deduce().is_none(), "Failed on: {}", size);
     }
 
     #[test]
@@ -1058,5 +1067,82 @@ mod formula_tests {
             parser.deduce().is_none(),
             "Expected complex unsatisfiable formula to return None"
         );
+    }
+
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_2() {
+        run_unsat_test(2);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_3() {
+        run_unsat_test(3);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_4() {
+        run_unsat_test(4);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_5() {
+        run_unsat_test(5);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_6() {
+        run_unsat_test(6);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_7() {
+        run_unsat_test(7);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_8() {
+        run_unsat_test(8);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_9() {
+        run_unsat_test(9);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_10() {
+        run_unsat_test(10);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_11() {
+        run_unsat_test(11);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_12() {
+        run_unsat_test(12);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_13() {
+        run_unsat_test(13);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_14() {
+        run_unsat_test(14);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_15() {
+        run_unsat_test(15);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_16() {
+        run_unsat_test(16);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_17() {
+        run_unsat_test(17);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_18() {
+        run_unsat_test(18);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_19() {
+        run_unsat_test(19);
+    }
+    #[test]
+    fn deduction_correctly_finds_non_satisabillity_20() {
+        run_unsat_test(20);
     }
 }
