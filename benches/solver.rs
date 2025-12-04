@@ -61,13 +61,14 @@ pub fn bench_solver_comparison(c: &mut Criterion) {
             .measurement_time(std::time::Duration::from_secs(10))
             .sampling_mode(SamplingMode::Flat);
 
-        group.bench_with_input(
-            BenchmarkId::new("unsat_fully_solve", size),
-            &parser,
-            |b, parser| {
-                b.iter(|| parser.fully_solve());
-            },
-        );
+        // commented this out to avoid infinite bench time
+        // group.bench_with_input(
+        //     BenchmarkId::new("unsat_fully_solve", size),
+        //     &parser,
+        //     |b, parser| {
+        //         b.iter(|| parser.fully_solve());
+        //     },
+        // );
 
         group.bench_with_input(
             BenchmarkId::new("unsat_deduce", size),

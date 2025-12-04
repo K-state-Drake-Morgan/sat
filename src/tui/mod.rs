@@ -190,7 +190,7 @@ impl App {
                 }
                 _ => {
                     self.result_lines = vec![Line::from(Span::styled(
-                        "❌ Could not deduce a solution",
+                        "Could not deduce a solution",
                         Style::default().fg(Color::Red),
                     ))];
                     self.error = None;
