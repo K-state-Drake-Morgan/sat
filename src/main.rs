@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tracing::trace;
 
+mod gui;
 mod solver;
 use solver::formula::Formula;
 
